@@ -1,0 +1,297 @@
+import csv
+import os
+
+NAMA_FILE = "destinasi-wisata-indonesia.csv"
+BIAYA_MAKAN = 60000
+BIAYA_TRANSPORT = 40000
+BATAS_HEMAT = 200000
+BATAS_STANDAR = 400000
+BARIS_PER_HALAMAN = 20
+GARIS = "=" * 97
+
+def format_rupiah(angka):
+    return "Rp" + f"{angka:,}".replace(",", ".")
+
+def klasifikasi_anggaran(biaya):
+    if biaya <= BATAS_HEMAT:
+        return "Hemat"
+    elif biaya <= BATAS_STANDAR:
+        return "Standar"
+    else:
+        return "Premium"
+
+def minta_angka(pesan):
+    teks = input(pesan).strip()
+    while not teks.isdigit() or int(teks) < 1:
+        print("Input harus berupa angka bulat minimal 1.")
+        teks = input(pesan).strip()
+    return int(teks)
+
+def bersihkan_baris(baris):
+    teks = baris.strip().rstrip(";")
+    if teks.startswith('"'):
+        teks = teks.strip('"').replace('""', '"')
+    return teks
+
+class Tempat:
+    def __init__(self, place_id, nama, kategori, kota, harga, rating):
+        self.place_id = place_id
+        self.nama = nama
+        self.kategori = kategori
+        self.kota = kota
+        self.harga = harga
+        self.rating = rating
+
+    def harga_angka(self):
+        if self.harga.isdigit():
+            return int(self.harga)
+        return -1
+
+    def rating_angka(self):
+        if not self.rating.isdigit():
+            return -1.0
+        nilai = int(self.rating)
+        if nilai > 5:
+            return nilai / 10
+        return float(nilai)
+
+    def data_kosong(self):
+        kosong = []
+        if self.nama == "":
+            kosong.append("Nama Tempat")
+        if self.kategori == "":
+            kosong.append("Kategori")
+        if self.kota == "":
+            kosong.append("Kota")
+        if self.harga == "":
+            kosong.append("Harga")
+        if self.rating == "":
+            kosong.append("Rating")
+        return kosong
+
+    def cetak_baris(self):
+        harga = self.harga_angka()
+        if harga == -1:
+            teks_harga = "-"
+        elif harga == 0:
+            teks_harga = "Gratis"
+        else:
+            teks_harga = format_rupiah(harga)
+
+        rating = self.rating_angka()
+        if rating < 0:
+            teks_rating = "-"
+        else:
+            teks_rating = f"{rating:.1f}"
+
+        print(f"{self.place_id:<9}{self.nama[:34]:<36}{self.kategori:<20}"
+              f"{self.kota:<12}{teks_harga:>12}{teks_rating:>8}")
+
+class AplikasiWisata:
+    def __init__(self, lokasi_file):
+        self.lokasi_file = lokasi_file
+        self.daftar = []
+
+    def login(self):
+        print(GARIS)
+        print("SILAHKAN LOGIN TERLEBIH DAHULU")
+        print(GARIS)
+        percobaan = 3
+        while percobaan > 0:
+            username = input("Username: ").strip()
+            password = input("Password: ").strip()
+            if username == "admin" and password == "12345":
+                print("Login berhasil! Selamat datang.")
+                return True
+            percobaan -= 1
+            print(f"Username atau password salah! Sisa percobaan: {percobaan}\n")
+        print("Terlalu banyak salah input. Program dihentikan.")
+        return False
+
+    def baca_csv(self):
+        nomor_baris = 0
+        with open(self.lokasi_file, encoding="utf-8-sig") as file:
+            for baris in file:
+                nomor_baris += 1
+                teks = bersihkan_baris(baris)
+                if nomor_baris == 1 or teks == "":
+                    continue
+                kolom = list(csv.reader([teks]))[0]
+                if len(kolom) < 14 or not kolom[0].strip().isdigit():
+                    continue
+                tempat = Tempat(kolom[0].strip(), kolom[1].strip(),
+                                kolom[-11].strip(), kolom[-10].strip(),
+                                kolom[-9].strip(), kolom[-8].strip())
+                self.daftar.append(tempat)
+
+    def cari_tempat(self, teks):
+        if not teks.isdigit():
+            print("Place ID harus berupa angka.")
+            return None
+        for tempat in self.daftar:
+            if int(tempat.place_id) == int(teks):
+                return tempat
+        print("Place ID tidak ditemukan.")
+        return None
+
+    def tampilkan_tabel(self, daftar, judul):
+        print("\n" + judul)
+        print(GARIS)
+        print(f"{'ID':<9}{'Nama Tempat':<36}{'Kategori':<20}{'Kota':<12}{'Harga':>12}{'Rating':>8}")
+        print(GARIS)
+        jumlah = 0
+        for tempat in daftar:
+            tempat.cetak_baris()
+            jumlah += 1
+            if jumlah % BARIS_PER_HALAMAN == 0 and jumlah < len(daftar):
+                jawab = input(f"--- {jumlah} dari {len(daftar)} tampil. Enter = lanjut, q = berhenti: ")
+                if jawab.strip().lower() == "q":
+                    break
+        print(GARIS)
+
+    def menu_daftar_semua(self):
+        self.tampilkan_tabel(self.daftar, "DAFTAR SEMUA TEMPAT WISATA")
+        print("\nPEMERIKSAAN DATA KOSONG")
+        bermasalah = 0
+        for tempat in self.daftar:
+            kosong = tempat.data_kosong()
+            if len(kosong) > 0:
+                bermasalah += 1
+                print(f"- Place ID {tempat.place_id}: kosong pada {', '.join(kosong)}")
+        if bermasalah == 0:
+            print("Semua data lengkap.")
+        else:
+            print(f"{bermasalah} dari {len(self.daftar)} tempat memiliki data kosong.")
+
+    def menu_cari_kota(self):
+        kota = input("\nMasukkan nama kota (contoh: Bandung): ").strip().lower()
+        hasil = []
+        for tempat in self.daftar:
+            if kota != "" and kota in tempat.kota.lower():
+                hasil.append(tempat)
+        if len(hasil) == 0:
+            print("Tidak ada tempat untuk kota tersebut.")
+        else:
+            self.tampilkan_tabel(hasil, f"TEMPAT WISATA DI '{kota.title()}' ({len(hasil)} tempat)")
+
+    def menu_klasifikasi_tempat(self):
+        tempat = self.cari_tempat(input("\nMasukkan Place ID: ").strip())
+        if tempat is None:
+            return
+        harga = tempat.harga_angka()
+        print(f"\nTempat   : {tempat.nama} ({tempat.kota})")
+        if harga == -1:
+            print("Harga tiket kosong, tidak bisa diklasifikasikan.")
+            return
+        total = harga + BIAYA_MAKAN + BIAYA_TRANSPORT
+        print(f"Tiket    : {format_rupiah(harga)}")
+        print(f"Makan    : {format_rupiah(BIAYA_MAKAN)}")
+        print(f"Transport: {format_rupiah(BIAYA_TRANSPORT)}")
+        print(f"Estimasi per orang per hari: {format_rupiah(total)}")
+        print(f"Kategori anggaran: {klasifikasi_anggaran(total).upper()}")
+
+    def menu_estimasi_perjalanan(self):
+        print("\nESTIMASI BIAYA PERJALANAN")
+        hari = minta_angka("Lama perjalanan (hari): ")
+        orang = minta_angka("Jumlah orang          : ")
+        terpilih = []
+        total_tiket = 0
+
+        print("Masukkan Place ID tempat yang ingin dikunjungi.")
+        teks = input("Place ID (0 = selesai): ").strip()
+        while teks != "0":
+            tempat = self.cari_tempat(teks)
+            if tempat is not None:
+                harga = tempat.harga_angka()
+                if tempat in terpilih:
+                    print("Tempat ini sudah dipilih.")
+                elif harga == -1:
+                    print("Harga tempat ini kosong, tidak bisa dihitung.")
+                else:
+                    terpilih.append(tempat)
+                    total_tiket += harga
+                    print(f"+ {tempat.nama} ({format_rupiah(harga)}) ditambahkan.")
+            teks = input("Place ID (0 = selesai): ").strip()
+
+        if len(terpilih) == 0:
+            print("Belum ada tempat yang dipilih, perhitungan dibatalkan.")
+            return
+
+        self.tampilkan_tabel(terpilih, "TEMPAT YANG DIPILIH")
+        makan_transport = BIAYA_MAKAN + BIAYA_TRANSPORT
+        total_semua = (total_tiket + makan_transport * hari) * orang
+        per_orang_hari = round(total_semua / orang / hari)
+        kategori = klasifikasi_anggaran(per_orang_hari)
+
+        print(f"Total tiket per orang ({len(terpilih)} tempat): {format_rupiah(total_tiket)}")
+        print(f"Makan + transport per orang per hari : {format_rupiah(makan_transport)}")
+        print(f"Estimasi biaya per orang per hari    : {format_rupiah(per_orang_hari)}")
+        print(f"Estimasi total {hari} hari ({orang} orang)     : {format_rupiah(total_semua)}")
+        print(f"KATEGORI ANGGARAN PERJALANAN         : {kategori.upper()}")
+
+        if kategori == "Hemat":
+            print("Catatan: perjalanan irit, masih ada ruang menambah tempat wisata.")
+        elif kategori == "Standar":
+            print("Catatan: anggaran seimbang antara kenyamanan dan biaya.")
+        else:
+            print("Catatan: anggaran tinggi, pertimbangkan mengurangi tempat berbayar mahal.")
+
+    def jalankan_tes(self):
+        assert format_rupiah(1500000) == "Rp1.500.000"
+        assert klasifikasi_anggaran(BATAS_HEMAT) == "Hemat"
+        assert klasifikasi_anggaran(BATAS_HEMAT + 1) == "Standar"
+        assert klasifikasi_anggaran(BATAS_STANDAR + 1) == "Premium"
+        contoh = Tempat("1", "", "Budaya", "Jakarta", "25000", "")
+        assert contoh.harga_angka() == 25000
+        assert contoh.rating_angka() == -1.0
+        assert contoh.data_kosong() == ["Nama Tempat", "Rating"]
+        assert Tempat("2", "A", "B", "C", "", "45").harga_angka() == -1
+        assert Tempat("2", "A", "B", "C", "", "45").rating_angka() == 4.5
+        assert Tempat("2", "A", "B", "C", "", "4").rating_angka() == 4.0
+        print("Semua pengujian fungsi LULUS.")
+
+    def jalankan(self):
+        if not os.path.exists(self.lokasi_file):
+            print(f"File '{NAMA_FILE}' tidak ditemukan.")
+            return
+
+        self.baca_csv()
+        if len(self.daftar) == 0:
+            print("File CSV terbaca tetapi tidak ada data yang valid.")
+            return
+
+        print(GARIS)
+        print("PROGRAM KLASIFIKASI ANGGARAN PERJALANAN WISATA (HEMAT - STANDAR - PREMIUM)")
+        print(f"Data dimuat: {len(self.daftar)} tempat wisata tersedia.")
+        print(GARIS)
+
+        pilihan = ""
+        while pilihan != "0":
+            print("\nMENU UTAMA")
+            print("1. Daftar semua tempat + cek data kosong")
+            print("2. Cari tempat wisata berdasarkan kota")
+            print("3. Klasifikasi anggaran satu tempat (Place ID)")
+            print("4. Hitung estimasi biaya perjalanan")
+            print("5. Uji fungsi program (testing)")
+            print("0. Keluar")
+            pilihan = input("Pilih menu [0-5]: ").strip()
+
+            if pilihan == "1":
+                self.menu_daftar_semua()
+            elif pilihan == "2":
+                self.menu_cari_kota()
+            elif pilihan == "3":
+                self.menu_klasifikasi_tempat()
+            elif pilihan == "4":
+                self.menu_estimasi_perjalanan()
+            elif pilihan == "5":
+                self.jalankan_tes()
+            elif pilihan == "0":
+                print("Terima kasih, program selesai.")
+            else:
+                print("Pilihan tidak valid.")
+
+folder = os.path.dirname(os.path.abspath(__file__))
+aplikasi = AplikasiWisata(os.path.join(folder, NAMA_FILE))
+if aplikasi.login():
+    aplikasi.jalankan()
